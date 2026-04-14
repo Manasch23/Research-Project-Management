@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useData } from "@/lib/data-context";
-import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import Loading from "./loading"; // Import the loading component
 import {
@@ -38,12 +37,20 @@ export default function BrowseProjectsPage() {
   const { user } = useAuth();
   const { projects, projectApplications, addProjectApplication, addAuditLog } =
     useData();
-  const searchParams = useSearchParams(); // Use useSearchParams here
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [coverLetter, setCoverLetter] = useState("");
 
   if (!user) return null;
+  if (user.role !== "student") {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <p className="text-muted-foreground">
+          You don&apos;t have permission to access this page.
+        </p>
+      </div>
+    );
+  }
 
   // Filter projects that are open for applications or in progress
   const openProjects = projects.filter(

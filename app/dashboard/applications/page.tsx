@@ -32,12 +32,21 @@ import type { ProjectApplication } from "@/lib/types";
 
 export default function ApplicationsPage() {
   const { user } = useAuth();
-  const { projects, projectApplications, updateApplicationStatus, updateProject, users, addAuditLog } =
+  const { projects, projectApplications, updateApplicationStatus, addAuditLog } =
     useData();
   const [selectedApplication, setSelectedApplication] =
     useState<ProjectApplication | null>(null);
 
   if (!user) return null;
+  if (user.role !== "faculty" && user.role !== "admin") {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <p className="text-muted-foreground">
+          You don&apos;t have permission to access this page.
+        </p>
+      </div>
+    );
+  }
 
   // Get projects this faculty advises
   const myProjects = projects.filter((p) => p.facultyAdvisor === user.id);
@@ -55,30 +64,16 @@ export default function ApplicationsPage() {
     (a) => a.status !== "pending"
   );
 
-  const handleDecision = (
+  const handleDecision = async (
     applicationId: string,
     decision: "accepted" | "rejected"
   ) => {
     const application = applications.find((a) => a.id === applicationId);
     if (!application) return;
 
-    updateApplicationStatus(applicationId, decision);
+    await updateApplicationStatus(applicationId, decision);
 
-    if (decision === "accepted") {
-      const project = projects.find((p) => p.id === application.projectId);
-      if (project) {
-        const applicant = users.find((u) => u.id === application.applicantId);
-        updateProject(project.id, {
-          teamMembers: [...project.teamMembers, application.applicantId],
-          teamMemberNames: [
-            ...project.teamMemberNames,
-            applicant?.name || application.applicantName,
-          ],
-        });
-      }
-    }
-
-    addAuditLog({
+    await addAuditLog({
       userId: user.id,
       userName: user.name,
       action: `APPLICATION_${decision.toUpperCase()}`,
@@ -97,8 +92,6 @@ export default function ApplicationsPage() {
     application: ProjectApplication;
     showActions?: boolean;
   }) => {
-    const project = myProjects.find((p) => p.id === application.projectId);
-
     return (
       <Card>
         <CardHeader className="pb-3">

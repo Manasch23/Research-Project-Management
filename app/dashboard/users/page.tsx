@@ -2,7 +2,6 @@
 
 import React from "react";
 import { Suspense } from "react";
-import { useSearchParams } from "next/navigation";
 
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
@@ -33,6 +32,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,6 +61,7 @@ import {
   GraduationCap,
   FlaskConical,
   ShieldCheck,
+  KeyRound,
 } from "lucide-react";
 import type { User, UserRole } from "@/lib/types";
 
@@ -188,13 +189,19 @@ function UserForm({
 
 export default function UsersPage() {
   const { user } = useAuth();
-  const { users, departments, addUser, updateUser, deleteUser, addAuditLog } =
+  const { users, departments, addUser, updateUser, resetUserPassword, deleteUser, addAuditLog } =
     useData();
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
+  const [resettingUser, setResettingUser] = useState<User | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resetError, setResetError] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -202,8 +209,6 @@ export default function UsersPage() {
     role: "student" as UserRole,
     department: "",
   });
-
-  const searchParams = useSearchParams();
 
   if (!user || user.role !== "admin") {
     return (
@@ -223,17 +228,17 @@ export default function UsersPage() {
     return matchesSearch && matchesRole;
   });
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!formData.name || !formData.email || !formData.department) return;
 
-    addUser({
+    await addUser({
       name: formData.name,
       email: formData.email,
       role: formData.role,
       department: formData.department,
     });
 
-    addAuditLog({
+    await addAuditLog({
       userId: user.id,
       userName: user.name,
       action: "USER_CREATED",
@@ -244,17 +249,17 @@ export default function UsersPage() {
     setIsCreateOpen(false);
   };
 
-  const handleUpdate = () => {
+  const handleUpdate = async () => {
     if (!editingUser) return;
 
-    updateUser(editingUser.id, {
+    await updateUser(editingUser.id, {
       name: formData.name,
       email: formData.email,
       role: formData.role,
       department: formData.department,
     });
 
-    addAuditLog({
+    await addAuditLog({
       userId: user.id,
       userName: user.name,
       action: "USER_UPDATED",
@@ -265,12 +270,12 @@ export default function UsersPage() {
     setFormData({ name: "", email: "", role: "student", department: "" });
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deletingUser) return;
 
-    deleteUser(deletingUser.id);
+    await deleteUser(deletingUser.id);
 
-    addAuditLog({
+    await addAuditLog({
       userId: user.id,
       userName: user.name,
       action: "USER_DELETED",
@@ -288,6 +293,51 @@ export default function UsersPage() {
       department: userToEdit.department,
     });
     setEditingUser(userToEdit);
+  };
+
+  const openResetPasswordDialog = (userToReset: User) => {
+    setResetError("");
+    setResetMessage("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setResettingUser(userToReset);
+  };
+
+  const handleResetPassword = async () => {
+    if (!resettingUser) return;
+    setResetError("");
+    setResetMessage("");
+
+    if (!newPassword || !confirmPassword) {
+      setResetError("Both password fields are required.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setResetError("Password must be at least 8 characters long.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setResetError("Passwords do not match.");
+      return;
+    }
+
+    setIsResettingPassword(true);
+    try {
+      await resetUserPassword(resettingUser.id, newPassword);
+      await addAuditLog({
+        userId: user.id,
+        userName: user.name,
+        action: "USER_PASSWORD_RESET",
+        details: `Reset password for user: ${resettingUser.email}`,
+      });
+      setResetMessage("Password reset successfully.");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error) {
+      setResetError(error instanceof Error ? error.message : "Unable to reset password.");
+    } finally {
+      setIsResettingPassword(false);
+    }
   };
 
   return (
@@ -421,6 +471,14 @@ export default function UsersPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
+                                onClick={() => openResetPasswordDialog(userItem)}
+                              >
+                                <KeyRound className="w-4 h-4" />
+                                <span className="sr-only">Reset Password</span>
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
                                 onClick={() => setDeletingUser(userItem)}
                                 disabled={userItem.id === user.id}
                               >
@@ -482,6 +540,75 @@ export default function UsersPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog
+          open={!!resettingUser}
+          onOpenChange={(open) => {
+            if (!open) {
+              setResettingUser(null);
+              setResetError("");
+              setResetMessage("");
+              setNewPassword("");
+              setConfirmPassword("");
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reset User Password</DialogTitle>
+              <DialogDescription>
+                Set a new password for {resettingUser?.email}. You cannot view the existing password.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {resetMessage && (
+                <Alert>
+                  <AlertDescription>{resetMessage}</AlertDescription>
+                </Alert>
+              )}
+              {resetError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{resetError}</AlertDescription>
+                </Alert>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="new-user-password">New Password</Label>
+                <Input
+                  id="new-user-password"
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirm-user-password">Confirm Password</Label>
+                <Input
+                  id="confirm-user-password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setResettingUser(null);
+                    setResetError("");
+                    setResetMessage("");
+                    setNewPassword("");
+                    setConfirmPassword("");
+                  }}
+                >
+                  Close
+                </Button>
+                <Button onClick={handleResetPassword} disabled={isResettingPassword}>
+                  {isResettingPassword ? "Resetting..." : "Reset Password"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </Suspense>
   );

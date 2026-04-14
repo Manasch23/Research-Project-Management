@@ -10,44 +10,88 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from backend.config import load_settings
-from backend.database import db_session, init_db
-from backend.schemas import (
-    AuditLogResponse,
-    AuthResponse,
-    CreateApplicationRequest,
-    CreateAuditLogRequest,
-    CreateProgressUpdateRequest,
-    CreateProjectRequest,
-    CreateProposalRequest,
-    DepartmentResponse,
-    ForgotPasswordRequest,
-    ForgotPasswordResponse,
-    LoginRequest,
-    ProgressUpdateResponse,
-    ProjectApplicationResponse,
-    ProjectResponse,
-    ProposalResponse,
-    RefreshTokenRequest,
-    RegisterRequest,
-    ResetPasswordRequest,
-    ReviewCommentResponse,
-    ReviewProposalRequest,
-    StatisticsResponse,
-    UpdateApplicationRequest,
-    UpdateProjectRequest,
-    UpdateProposalRequest,
-    UserMutationRequest,
-    UserResponse,
-)
-from backend.security import (
-    create_access_token,
-    create_refresh_token,
-    decode_access_token,
-    decode_refresh_token,
-    hash_password,
-    verify_password,
-)
+try:
+    from backend.config import load_settings
+    from backend.database import db_session, init_db
+    from backend.schemas import (
+        AuditLogResponse,
+        AuthResponse,
+        CreateApplicationRequest,
+        ChangePasswordRequest,
+        CreateAuditLogRequest,
+        CreateProgressUpdateRequest,
+        CreateProjectRequest,
+        CreateProposalRequest,
+        DepartmentResponse,
+        ForgotPasswordRequest,
+        ForgotPasswordResponse,
+        LoginRequest,
+        AdminResetPasswordRequest,
+        ProgressUpdateResponse,
+        ProjectApplicationResponse,
+        ProjectResponse,
+        ProposalResponse,
+        RefreshTokenRequest,
+        RegisterRequest,
+        ResetPasswordRequest,
+        ReviewCommentResponse,
+        ReviewProposalRequest,
+        StatisticsResponse,
+        UpdateApplicationRequest,
+        UpdateProjectRequest,
+        UpdateProposalRequest,
+        UserMutationRequest,
+        UserResponse,
+    )
+    from backend.security import (
+        create_access_token,
+        create_refresh_token,
+        decode_access_token,
+        decode_refresh_token,
+        hash_password,
+        verify_password,
+    )
+except ModuleNotFoundError:
+    from config import load_settings
+    from database import db_session, init_db
+    from schemas import (
+        AuditLogResponse,
+        AuthResponse,
+        CreateApplicationRequest,
+        ChangePasswordRequest,
+        CreateAuditLogRequest,
+        CreateProgressUpdateRequest,
+        CreateProjectRequest,
+        CreateProposalRequest,
+        DepartmentResponse,
+        ForgotPasswordRequest,
+        ForgotPasswordResponse,
+        LoginRequest,
+        AdminResetPasswordRequest,
+        ProgressUpdateResponse,
+        ProjectApplicationResponse,
+        ProjectResponse,
+        ProposalResponse,
+        RefreshTokenRequest,
+        RegisterRequest,
+        ResetPasswordRequest,
+        ReviewCommentResponse,
+        ReviewProposalRequest,
+        StatisticsResponse,
+        UpdateApplicationRequest,
+        UpdateProjectRequest,
+        UpdateProposalRequest,
+        UserMutationRequest,
+        UserResponse,
+    )
+    from security import (
+        create_access_token,
+        create_refresh_token,
+        decode_access_token,
+        decode_refresh_token,
+        hash_password,
+        verify_password,
+    )
 
 
 settings = load_settings()
@@ -402,6 +446,13 @@ def register(payload: RegisterRequest):
         department_id = get_department_id_by_name(connection, payload.department)
         if not department_id:
             raise HTTPException(status_code=400, detail="Selected department does not exist.")
+        if payload.role == "coordinator":
+            existing_coordinator = connection.execute(
+                "SELECT coordinator_user_id FROM departments WHERE id = ?",
+                (department_id,),
+            ).fetchone()
+            if existing_coordinator and existing_coordinator["coordinator_user_id"]:
+                raise HTTPException(status_code=409, detail="A coordinator already exists for this department.")
 
         role_prefix = {"student": "stu", "faculty": "fac", "coordinator": "coord"}[payload.role]
         user_id = f"user-{role_prefix}-{uuid.uuid4().hex[:8]}"
@@ -507,6 +558,24 @@ def reset_password(payload: ResetPasswordRequest):
         return {"message": "Password reset successfully."}
 
 
+@app.post("/api/auth/change-password")
+def change_password(payload: ChangePasswordRequest, current_user=Depends(get_current_user)):
+    with db_session() as connection:
+        user_row = row_or_404(get_user_row(connection, current_user["id"]), "User not found.")
+        if not verify_password(payload.currentPassword, user_row["password_hash"]):
+            raise HTTPException(status_code=400, detail="Current password is incorrect.")
+        if payload.currentPassword == payload.newPassword:
+            raise HTTPException(status_code=400, detail="New password must be different from current password.")
+
+        connection.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (hash_password(payload.newPassword), current_user["id"]),
+        )
+        connection.execute("UPDATE refresh_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL", (utc_now_iso(), current_user["id"]))
+        create_audit_log(connection, current_user["id"], "PASSWORD_CHANGED", "Changed account password")
+        return {"message": "Password changed successfully."}
+
+
 @app.post("/api/auth/refresh", response_model=AuthResponse)
 def refresh_auth(payload: RefreshTokenRequest):
     try:
@@ -570,6 +639,9 @@ def list_users(
             WHERE 1 = 1
         """
         values: list[Any] = []
+        if current_user["role"] == "coordinator":
+            query += " AND u.department_id = ? AND u.role != 'admin'"
+            values.append(current_user["department_id"])
         if role:
             query += " AND u.role = ?"
             values.append(role)
@@ -589,6 +661,13 @@ def create_user(payload: UserMutationRequest, current_user=Depends(get_current_u
         if existing:
             raise HTTPException(status_code=409, detail="A user with this email already exists.")
         department_id = get_department_id_by_name(connection, payload.department)
+        if payload.role == "coordinator":
+            existing_coordinator = connection.execute(
+                "SELECT coordinator_user_id FROM departments WHERE id = ?",
+                (department_id,),
+            ).fetchone()
+            if existing_coordinator and existing_coordinator["coordinator_user_id"]:
+                raise HTTPException(status_code=409, detail="A coordinator already exists for this department.")
         user_id = f"user-{uuid.uuid4().hex[:8]}"
         connection.execute(
             """
@@ -605,9 +684,20 @@ def create_user(payload: UserMutationRequest, current_user=Depends(get_current_u
 def update_user(user_id: str, payload: UserMutationRequest, current_user=Depends(get_current_user)):
     require_role(current_user, {"admin"})
     with db_session() as connection:
-        row_or_404(get_user_row(connection, user_id), "User not found.")
+        existing_user = row_or_404(get_user_row(connection, user_id), "User not found.")
         department_id = get_department_id_by_name(connection, payload.department)
         normalized_email = payload.email.strip().lower()
+        if payload.role == "coordinator":
+            existing_coordinator = connection.execute(
+                "SELECT coordinator_user_id FROM departments WHERE id = ?",
+                (department_id,),
+            ).fetchone()
+            if (
+                existing_coordinator
+                and existing_coordinator["coordinator_user_id"]
+                and existing_coordinator["coordinator_user_id"] != user_id
+            ):
+                raise HTTPException(status_code=409, detail="A coordinator already exists for this department.")
         connection.execute(
             """
             UPDATE users
@@ -616,6 +706,8 @@ def update_user(user_id: str, payload: UserMutationRequest, current_user=Depends
             """,
             (payload.name, normalized_email, payload.role, department_id, user_id),
         )
+        if existing_user["role"] == "coordinator":
+            connection.execute("UPDATE departments SET coordinator_user_id = NULL WHERE coordinator_user_id = ?", (user_id,))
         if payload.role == "coordinator":
             connection.execute(
                 "UPDATE departments SET coordinator_user_id = ? WHERE id = ?",
@@ -623,6 +715,17 @@ def update_user(user_id: str, payload: UserMutationRequest, current_user=Depends
             )
         create_audit_log(connection, current_user["id"], "USER_UPDATED", f"Updated user: {normalized_email}")
         return user_to_response(connection, get_user_row(connection, user_id))
+
+
+@app.post("/api/users/{user_id}/reset-password")
+def admin_reset_user_password(user_id: str, payload: AdminResetPasswordRequest, current_user=Depends(get_current_user)):
+    require_role(current_user, {"admin"})
+    with db_session() as connection:
+        target_user = row_or_404(get_user_row(connection, user_id), "User not found.")
+        connection.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(payload.newPassword), user_id))
+        connection.execute("UPDATE refresh_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL", (utc_now_iso(), user_id))
+        create_audit_log(connection, current_user["id"], "USER_PASSWORD_RESET", f"Reset password for user: {target_user['email']}")
+        return {"message": "User password reset successfully."}
 
 
 @app.delete("/api/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -649,6 +752,9 @@ def list_proposals(
             WHERE 1 = 1
         """
         values: list[Any] = []
+        if current_user["role"] == "coordinator":
+            query += " AND p.department_id = ?"
+            values.append(current_user["department_id"])
         if status_filter:
             query += " AND p.status = ?"
             values.append(status_filter)
@@ -701,8 +807,11 @@ def create_proposal(payload: CreateProposalRequest, current_user=Depends(get_cur
 def update_proposal(proposal_id: str, payload: UpdateProposalRequest, current_user=Depends(get_current_user)):
     with db_session() as connection:
         proposal = row_or_404(connection.execute("SELECT * FROM proposals WHERE id = ?", (proposal_id,)).fetchone(), "Proposal not found.")
-        if current_user["role"] == "student" and proposal["submitted_by_id"] != current_user["id"]:
-            raise HTTPException(status_code=403, detail="You can only edit your own proposals.")
+        if current_user["role"] == "student":
+            if proposal["submitted_by_id"] != current_user["id"]:
+                raise HTTPException(status_code=403, detail="You can only edit your own proposals.")
+        elif current_user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Only students can update proposals directly.")
 
         updates = payload.model_dump(exclude_unset=True)
         if not updates:
@@ -775,6 +884,9 @@ def list_projects(
             WHERE 1 = 1
         """
         values: list[Any] = []
+        if current_user["role"] == "coordinator":
+            query += " AND p.department_id = ?"
+            values.append(current_user["department_id"])
         if status_filter:
             query += " AND p.status = ?"
             values.append(status_filter)
@@ -798,9 +910,15 @@ def list_projects(
 
 @app.post("/api/projects", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 def create_project(payload: CreateProjectRequest, current_user=Depends(get_current_user)):
-    require_role(current_user, {"faculty", "admin", "coordinator"})
+    require_role(current_user, {"faculty", "admin"})
     with db_session() as connection:
-        department_id = get_department_id_by_name(connection, payload.department)
+        creator = row_or_404(get_user_row(connection, current_user["id"]), "User not found.")
+        if current_user["role"] == "faculty":
+            department_id = creator["department_id"]
+            faculty_advisor_id = current_user["id"]
+        else:
+            department_id = get_department_id_by_name(connection, payload.department)
+            faculty_advisor_id = payload.facultyAdvisor
         project_id = f"proj-{uuid.uuid4().hex[:8]}"
         now = utc_now_iso()
         connection.execute(
@@ -820,7 +938,7 @@ def create_project(payload: CreateProjectRequest, current_user=Depends(get_curre
                 payload.startDate,
                 payload.endDate,
                 payload.leadResearcher,
-                payload.facultyAdvisor,
+                faculty_advisor_id,
                 department_id,
                 now,
                 now,
@@ -837,9 +955,13 @@ def create_project(payload: CreateProjectRequest, current_user=Depends(get_curre
 
 @app.patch("/api/projects/{project_id}", response_model=ProjectResponse)
 def update_project(project_id: str, payload: UpdateProjectRequest, current_user=Depends(get_current_user)):
+    if current_user["role"] == "coordinator":
+        raise HTTPException(status_code=403, detail="Coordinator accounts are read-only for project updates.")
     with db_session() as connection:
         project = row_or_404(connection.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone(), "Project not found.")
-        if current_user["role"] not in {"faculty", "admin", "coordinator"} and project["lead_researcher_id"] != current_user["id"]:
+        if current_user["role"] == "faculty" and project["faculty_advisor_id"] != current_user["id"]:
+            raise HTTPException(status_code=403, detail="You can only update projects you advise.")
+        if current_user["role"] not in {"faculty", "admin"} and project["lead_researcher_id"] != current_user["id"]:
             raise HTTPException(status_code=403, detail="You do not have permission to update this project.")
 
         updates = payload.model_dump(exclude_unset=True)
@@ -905,27 +1027,37 @@ def list_progress_updates(
     current_user=Depends(get_current_user),
 ):
     with db_session() as connection:
-        query = "SELECT * FROM progress_updates WHERE 1 = 1"
+        query = """
+            SELECT pu.*
+            FROM progress_updates pu
+            JOIN projects p ON p.id = pu.project_id
+            WHERE 1 = 1
+        """
         values: list[Any] = []
+        if current_user["role"] == "coordinator":
+            query += " AND p.department_id = ?"
+            values.append(current_user["department_id"])
         if project_id:
-            query += " AND project_id = ?"
+            query += " AND pu.project_id = ?"
             values.append(project_id)
         if user_id:
-            query += " AND submitted_by_id = ?"
+            query += " AND pu.submitted_by_id = ?"
             values.append(user_id)
-        rows = connection.execute(query + " ORDER BY created_at DESC", values).fetchall()
+        rows = connection.execute(query + " ORDER BY pu.created_at DESC", values).fetchall()
         return [progress_update_to_response(connection, row) for row in rows]
 
 
 @app.post("/api/projects/{project_id}/progress", response_model=ProgressUpdateResponse, status_code=status.HTTP_201_CREATED)
 def add_progress_update(project_id: str, payload: CreateProgressUpdateRequest, current_user=Depends(get_current_user)):
+    if current_user["role"] == "coordinator":
+        raise HTTPException(status_code=403, detail="Coordinator accounts are read-only for progress updates.")
     with db_session() as connection:
         project = row_or_404(connection.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone(), "Project not found.")
         is_member = connection.execute(
             "SELECT 1 FROM project_members WHERE project_id = ? AND user_id = ?",
             (project_id, current_user["id"]),
         ).fetchone()
-        if current_user["role"] not in {"faculty", "admin", "coordinator"} and not is_member:
+        if current_user["role"] not in {"faculty", "admin"} and not is_member:
             raise HTTPException(status_code=403, detail="You must belong to the project to submit updates.")
 
         update_id = f"update-{uuid.uuid4().hex[:8]}"
@@ -947,18 +1079,26 @@ def list_applications(
     current_user=Depends(get_current_user),
 ):
     with db_session() as connection:
-        query = "SELECT * FROM project_applications WHERE 1 = 1"
+        query = """
+            SELECT pa.*
+            FROM project_applications pa
+            JOIN projects p ON p.id = pa.project_id
+            WHERE 1 = 1
+        """
         values: list[Any] = []
+        if current_user["role"] == "coordinator":
+            query += " AND p.department_id = ?"
+            values.append(current_user["department_id"])
         if project_id:
-            query += " AND project_id = ?"
+            query += " AND pa.project_id = ?"
             values.append(project_id)
         if applicant_id:
-            query += " AND applicant_id = ?"
+            query += " AND pa.applicant_id = ?"
             values.append(applicant_id)
         if status_filter:
-            query += " AND status = ?"
+            query += " AND pa.status = ?"
             values.append(status_filter)
-        rows = connection.execute(query + " ORDER BY created_at DESC", values).fetchall()
+        rows = connection.execute(query + " ORDER BY pa.created_at DESC", values).fetchall()
         return [application_to_response(connection, row) for row in rows]
 
 

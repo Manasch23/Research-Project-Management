@@ -29,19 +29,30 @@ export default function ReportsPage() {
   const [reportType, setReportType] = useState("overview");
   const [dateRange, setDateRange] = useState("all");
 
-  const totalProjects = projects.length;
-  const activeProjects = projects.filter((p) => p.status === "in_progress").length;
-  const completedProjects = projects.filter((p) => p.status === "completed").length;
-  const totalProposals = proposals.length;
-  const approvedProposals = proposals.filter((p) => p.status === "approved").length;
-  const pendingProposals = proposals.filter(
+  const isCoordinator = user?.role === "coordinator";
+  const scopedProjects = isCoordinator
+    ? projects.filter((project) => project.department === user?.department)
+    : projects;
+  const scopedProposals = isCoordinator
+    ? proposals.filter((proposal) => proposal.department === user?.department)
+    : proposals;
+  const scopedUsers = isCoordinator
+    ? users.filter((candidate) => candidate.department === user?.department && candidate.role !== "admin")
+    : users;
+
+  const totalProjects = scopedProjects.length;
+  const activeProjects = scopedProjects.filter((p) => p.status === "in_progress").length;
+  const completedProjects = scopedProjects.filter((p) => p.status === "completed").length;
+  const totalProposals = scopedProposals.length;
+  const approvedProposals = scopedProposals.filter((p) => p.status === "approved").length;
+  const pendingProposals = scopedProposals.filter(
     (p) => p.status === "submitted" || p.status === "under_review"
   ).length;
 
-  const studentCount = users.filter((u) => u.role === "student").length;
-  const facultyCount = users.filter((u) => u.role === "faculty").length;
+  const studentCount = scopedUsers.filter((u) => u.role === "student").length;
+  const facultyCount = scopedUsers.filter((u) => u.role === "faculty").length;
 
-  const departmentStats = projects.reduce(
+  const departmentStats = scopedProjects.reduce(
     (acc, project) => {
       acc[project.department] = (acc[project.department] || 0) + 1;
       return acc;
@@ -50,9 +61,9 @@ export default function ReportsPage() {
   );
 
   const avgProgress =
-    projects.length > 0
+    scopedProjects.length > 0
       ? Math.round(
-          projects.reduce((sum, p) => sum + p.progress, 0) / projects.length
+          scopedProjects.reduce((sum, p) => sum + p.progress, 0) / scopedProjects.length
         )
       : 0;
 
@@ -90,7 +101,7 @@ export default function ReportsPage() {
             <CardContent>
               <div className="text-2xl font-bold">
                 {
-                  projects.filter(
+                  scopedProjects.filter(
                       (p) =>
                       p.teamMembers.includes(user.id) && p.status === "in_progress"
                   ).length
@@ -108,7 +119,7 @@ export default function ReportsPage() {
             <CardContent>
               <div className="text-2xl font-bold">
                 {
-                  projects.filter(
+                  scopedProjects.filter(
                     (p) =>
                       p.teamMembers.includes(user.id) && p.status === "completed"
                   ).length
@@ -267,7 +278,7 @@ export default function ReportsPage() {
                     },
                     {
                       label: "On Hold",
-                      count: projects.filter((p) => p.status === "on_hold")
+                      count: scopedProjects.filter((p) => p.status === "on_hold")
                         .length,
                       color: "bg-chart-3",
                     },
@@ -316,13 +327,13 @@ export default function ReportsPage() {
                     },
                     {
                       label: "Under Review",
-                      count: proposals.filter((p) => p.status === "under_review")
+                      count: scopedProposals.filter((p) => p.status === "under_review")
                         .length,
                       color: "bg-primary",
                     },
                     {
                       label: "Rejected",
-                      count: proposals.filter((p) => p.status === "rejected")
+                      count: scopedProposals.filter((p) => p.status === "rejected")
                         .length,
                       color: "bg-destructive",
                     },
@@ -351,7 +362,7 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {projects.slice(0, 8).map((project) => (
+              {scopedProjects.slice(0, 8).map((project) => (
                 <div
                   key={project.id}
                   className="flex items-center justify-between p-3 border rounded-lg"
@@ -398,7 +409,7 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {proposals.slice(0, 8).map((proposal) => {
+              {scopedProposals.slice(0, 8).map((proposal) => {
                 return (
                   <div
                     key={proposal.id}
@@ -454,7 +465,7 @@ export default function ReportsPage() {
                       <div
                         className="bg-primary h-2 rounded-full"
                         style={{
-                          width: `${(count / totalProjects) * 100}%`,
+                          width: `${totalProjects > 0 ? (count / totalProjects) * 100 : 0}%`,
                         }}
                       />
                     </div>

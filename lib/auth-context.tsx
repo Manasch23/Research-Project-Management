@@ -18,6 +18,7 @@ interface AuthContextType {
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>
   forgotPassword: (email: string) => Promise<{ success: boolean; error?: string; resetUrl?: string }>
   resetPassword: (token: string, newPassword: string) => Promise<{ success: boolean; error?: string }>
+  changePassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>
   refreshUser: () => Promise<void>
 }
 
@@ -173,6 +174,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const changePassword = async (currentPassword: string, newPassword: string) => {
+    try {
+      await apiRequest<{ message: string }>("/auth/change-password", {
+        method: "POST",
+        token: token || undefined,
+        body: JSON.stringify({ currentPassword, newPassword }),
+      })
+      return { success: true }
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Unable to change password."
+      return { success: false, error: message }
+    }
+  }
+
   const refreshUser = async () => {
     if (!token) return
     try {
@@ -201,6 +216,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     register,
     forgotPassword,
     resetPassword,
+    changePassword,
     refreshUser,
   }
 

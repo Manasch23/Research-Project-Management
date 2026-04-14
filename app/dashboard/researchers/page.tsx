@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useData } from "@/lib/data-context";
-import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import Loading from "./loading"; // Import the Loading component
 
@@ -54,7 +53,6 @@ const roleIcons = {
 export default function ResearchersPage() {
   const { user } = useAuth();
   const { users, proposals, projects } = useData();
-  const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [selectedUser, setSelectedUser] = useState<User | null>(null);

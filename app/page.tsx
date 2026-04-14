@@ -105,15 +105,6 @@ function LoginPageContent() {
               ))}
             </div>
 
-            <div className="mt-8 p-4 rounded-lg bg-secondary/50 border border-border">
-              <h3 className="font-medium text-foreground mb-2">Test Credentials</h3>
-              <div className="text-sm text-muted-foreground space-y-1">
-                <p><span className="font-medium">Student:</span> john.smith@university.edu / student123</p>
-                <p><span className="font-medium">Faculty:</span> dr.williams@university.edu / faculty123</p>
-                <p><span className="font-medium">Coordinator:</span> dr.chen@university.edu / coord123</p>
-                <p><span className="font-medium">Admin:</span> admin@university.edu / admin123</p>
-              </div>
-            </div>
           </div>
 
           <div className="flex flex-col gap-6">

@@ -1,4 +1,7 @@
-from backend.security import hash_password
+try:
+    from backend.security import hash_password
+except ModuleNotFoundError:
+    from security import hash_password
 
 
 DEPARTMENTS = [

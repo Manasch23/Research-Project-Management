@@ -5,18 +5,32 @@ from pathlib import Path
 from typing import Any, Iterator
 from urllib.parse import unquote, urlparse
 
-from backend.seed_data import (
-    APPLICATIONS,
-    AUDIT_LOGS,
-    DEPARTMENTS,
-    MILESTONES,
-    PROJECT_MEMBERS,
-    PROJECTS,
-    PROGRESS_UPDATES,
-    PROPOSALS,
-    REVIEW_COMMENTS,
-    USERS,
-)
+try:
+    from backend.seed_data import (
+        APPLICATIONS,
+        AUDIT_LOGS,
+        DEPARTMENTS,
+        MILESTONES,
+        PROJECT_MEMBERS,
+        PROJECTS,
+        PROGRESS_UPDATES,
+        PROPOSALS,
+        REVIEW_COMMENTS,
+        USERS,
+    )
+except ModuleNotFoundError:
+    from seed_data import (
+        APPLICATIONS,
+        AUDIT_LOGS,
+        DEPARTMENTS,
+        MILESTONES,
+        PROJECT_MEMBERS,
+        PROJECTS,
+        PROGRESS_UPDATES,
+        PROPOSALS,
+        REVIEW_COMMENTS,
+        USERS,
+    )
 
 try:
     import pymysql

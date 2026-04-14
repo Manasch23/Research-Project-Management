@@ -5,11 +5,22 @@ import { useData } from "@/lib/data-context";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Mail, Building2, CalendarDays, FolderKanban, FileText } from "lucide-react";
+import { useState } from "react";
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, changePassword } = useAuth();
   const { proposals, projects } = useData();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
   if (!user) return null;
 
@@ -31,6 +42,35 @@ export default function ProfilePage() {
       : projects.filter(
           (project) => project.teamMembers.includes(user.id) || project.leadResearcher === user.id
         ).length;
+
+  const handleChangePassword = async () => {
+    setPasswordMessage("");
+    setPasswordError("");
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordError("All password fields are required.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPasswordError("New password must be at least 8 characters long.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New password and confirm password do not match.");
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    const result = await changePassword(currentPassword, newPassword);
+    if (result.success) {
+      setPasswordMessage("Password changed successfully. Please use the new password on next login.");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } else {
+      setPasswordError(result.error || "Unable to change password.");
+    }
+    setIsUpdatingPassword(false);
+  };
 
   return (
     <div className="space-y-6">
@@ -111,6 +151,59 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Change Password</CardTitle>
+          <CardDescription>Update your account password securely.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {passwordMessage && (
+            <Alert>
+              <AlertDescription>{passwordMessage}</AlertDescription>
+            </Alert>
+          )}
+          {passwordError && (
+            <Alert variant="destructive">
+              <AlertDescription>{passwordError}</AlertDescription>
+            </Alert>
+          )}
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="current-password">Current Password</Label>
+              <Input
+                id="current-password"
+                type="password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-password">New Password</Label>
+              <Input
+                id="new-password"
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm-password">Confirm New Password</Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={handleChangePassword} disabled={isUpdatingPassword}>
+              {isUpdatingPassword ? "Updating..." : "Update Password"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

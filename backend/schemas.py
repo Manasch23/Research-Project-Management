@@ -60,6 +60,11 @@ class ResetPasswordRequest(BaseModel):
     newPassword: str = Field(min_length=8)
 
 
+class ChangePasswordRequest(BaseModel):
+    currentPassword: str
+    newPassword: str = Field(min_length=8)
+
+
 class RefreshTokenRequest(BaseModel):
     refreshToken: str
 
@@ -231,6 +236,10 @@ class UserMutationRequest(BaseModel):
     email: str
     role: UserRole
     department: str
+
+
+class AdminResetPasswordRequest(BaseModel):
+    newPassword: str = Field(min_length=8)
 
 
 class StatisticsResponse(BaseModel):

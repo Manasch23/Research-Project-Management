@@ -39,6 +39,7 @@ interface DataContextType {
   refreshAll: () => Promise<void>
   addUser: (user: Omit<User, "id" | "createdAt">) => Promise<User>
   updateUser: (id: string, updates: Omit<User, "id" | "createdAt">) => Promise<User>
+  resetUserPassword: (id: string, newPassword: string) => Promise<void>
   deleteUser: (id: string) => Promise<void>
   addProposal: (proposal: Partial<Proposal> & { title: string; abstract: string }) => Promise<Proposal>
   updateProposal: (id: string, updates: Partial<Proposal>) => Promise<Proposal>
@@ -148,6 +149,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     })
     await refreshAll()
   }, [token, refreshAll])
+
+  const resetUserPassword: DataContextType["resetUserPassword"] = useCallback(async (id, newPassword) => {
+    await apiRequest<{ message: string }>(`/users/${id}/reset-password`, {
+      method: "POST",
+      token: token || undefined,
+      body: JSON.stringify({ newPassword }),
+    })
+  }, [token])
 
   const addProposal: DataContextType["addProposal"] = useCallback(async (proposal) => {
     const created = await apiRequest<Proposal>("/proposals", {
@@ -294,6 +303,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       refreshAll,
       addUser,
       updateUser,
+      resetUserPassword,
       deleteUser,
       addProposal,
       updateProposal,
@@ -318,6 +328,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       refreshAll,
       addUser,
       updateUser,
+      resetUserPassword,
       deleteUser,
       addProposal,
       updateProposal,

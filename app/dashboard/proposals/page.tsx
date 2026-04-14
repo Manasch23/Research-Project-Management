@@ -104,6 +104,7 @@ export default function ProposalsPage() {
 
   const shouldOpenNew = searchParams.get("new") === "1";
   const isCoordinator = user?.role === "coordinator";
+  const isStudent = user?.role === "student";
 
   React.useEffect(() => {
     if (shouldOpenNew && !isCoordinator) {
@@ -172,6 +173,7 @@ export default function ProposalsPage() {
   };
 
   const handleCreateProposal = async () => {
+    if (!isStudent) return;
     if (!formData.title || !formData.abstract) return;
     setError("");
     setIsSaving(true);
@@ -227,6 +229,7 @@ export default function ProposalsPage() {
   };
 
   const handleSubmitProposal = async (proposalId: string) => {
+    if (!isStudent) return;
     setError("");
     const proposal = proposals.find((p) => p.id === proposalId);
     try {
@@ -684,7 +687,7 @@ export default function ProposalsPage() {
                                 <Eye className="w-4 h-4" />
                                 <span className="sr-only">View</span>
                               </Button>
-                              {!isCoordinator && proposal.status === "draft" && (
+                              {isStudent && proposal.status === "draft" && (
                                 <>
                                   <Button
                                     variant="ghost"

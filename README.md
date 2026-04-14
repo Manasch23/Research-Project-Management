@@ -47,16 +47,18 @@ The frontend keeps the original dashboard UI and role-based navigation, but the 
 
 - Student, faculty, and coordinator self-registration
 - JWT authentication
+- Authenticated change-password for all users
 - Role-aware backend permissions
 - Proposal creation, draft saving, editing, and submission
 - Faculty proposal approval / rejection / revision requests
-- Project listing and updates
+- Faculty project creation, listing, and updates
 - Progress updates
-- Project application workflow
+- Student project browsing/application + faculty acceptance workflow
 - Admin user management
+- Admin user password reset (without exposing existing passwords)
 - Forgot-password and reset-password flow
 - Access token + refresh token flow (`/api/auth/refresh`)
-- Department and statistics endpoints
+- Department and statistics endpoints (coordinator scoped to own department)
 - Audit logging
 - Login rate limiting and request logging middleware
 - Health and readiness endpoints (`/health`, `/health/readiness`)

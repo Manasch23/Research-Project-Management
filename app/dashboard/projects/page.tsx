@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { useData } from "@/lib/data-context";
 import {
@@ -24,6 +25,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   FolderKanban,
   Calendar,
@@ -32,6 +34,7 @@ import {
   Circle,
   MessageSquare,
   Plus,
+  BriefcaseBusiness,
 } from "lucide-react";
 import type { Project, ProjectStatus } from "@/lib/types";
 
@@ -46,17 +49,32 @@ const statusConfig: Record<ProjectStatus, { label: string; color: string }> = {
 
 export default function ProjectsPage() {
   const { user } = useAuth();
-  const { projects, progressUpdates, addProgressUpdate, updateProject, addAuditLog } =
+  const { projects, progressUpdates, addProgressUpdate, updateProject, addProject, addAuditLog } =
     useData();
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isUpdateOpen, setIsUpdateOpen] = useState(false);
   const [updateContent, setUpdateContent] = useState("");
+  const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [projectForm, setProjectForm] = useState({
+    title: "",
+    description: "",
+    startDate: "",
+    endDate: "",
+    status: "open" as ProjectStatus,
+  });
 
   if (!user) return null;
 
-  const myProjects = projects.filter(
-    (p) => p.teamMembers.includes(user.id) || p.leadResearcher === user.id
-  );
+  const myProjects = projects.filter((p) => {
+    if (user.role === "faculty") {
+      return p.facultyAdvisor === user.id;
+    }
+    return p.teamMembers.includes(user.id) || p.leadResearcher === user.id;
+  });
+
+  const canCreateProjects = user.role === "faculty";
 
   const handleAddUpdate = () => {
     if (!selectedProject || !updateContent.trim()) return;
@@ -105,6 +123,50 @@ export default function ProjectsPage() {
   const getProjectUpdates = (projectId: string) =>
     progressUpdates.filter((u) => u.projectId === projectId);
 
+  const handleCreateProject = async () => {
+    setCreateError("");
+    if (!projectForm.title || !projectForm.description || !projectForm.startDate || !projectForm.endDate) {
+      setCreateError("All project fields are required.");
+      return;
+    }
+    if (new Date(projectForm.startDate).getTime() > new Date(projectForm.endDate).getTime()) {
+      setCreateError("End date must be on or after start date.");
+      return;
+    }
+
+    setIsCreatingProject(true);
+    try {
+      await addProject({
+        proposalId: null,
+        title: projectForm.title.trim(),
+        description: projectForm.description.trim(),
+        status: projectForm.status,
+        progress: 0,
+        startDate: projectForm.startDate,
+        endDate: projectForm.endDate,
+        leadResearcher: null,
+        facultyAdvisor: user.id,
+        department: user.department,
+      });
+      await addAuditLog({
+        action: "PROJECT_CREATED",
+        details: `Created project: ${projectForm.title}`,
+      });
+      setProjectForm({
+        title: "",
+        description: "",
+        startDate: "",
+        endDate: "",
+        status: "open",
+      });
+      setIsCreateProjectOpen(false);
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : "Unable to create project.");
+    } finally {
+      setIsCreatingProject(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -114,16 +176,27 @@ export default function ProjectsPage() {
         </p>
       </div>
 
+      {canCreateProjects && (
+        <div className="flex justify-end">
+          <Button onClick={() => setIsCreateProjectOpen(true)}>
+            <BriefcaseBusiness className="w-4 h-4 mr-2" />
+            Add Project
+          </Button>
+        </div>
+      )}
+
       {myProjects.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
-            <FolderKanban className="w-12 h-12 mx-auto text-muted-foreground/40 mb-3" />
-            <p className="text-muted-foreground mb-4">
-              You don&apos;t have any active projects yet
-            </p>
-            <Button variant="outline">Browse Open Projects</Button>
-          </CardContent>
-        </Card>
+              <FolderKanban className="w-12 h-12 mx-auto text-muted-foreground/40 mb-3" />
+              <p className="text-muted-foreground mb-4">
+                You don&apos;t have any active projects yet
+              </p>
+              <Button variant="outline" asChild>
+                <Link href="/dashboard/browse">Browse Open Projects</Link>
+              </Button>
+            </CardContent>
+          </Card>
       ) : (
         <div className="grid gap-6">
           {myProjects.map((project) => {
@@ -336,6 +409,78 @@ export default function ProjectsPage() {
                 Cancel
               </Button>
               <Button onClick={handleAddUpdate}>Submit Update</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isCreateProjectOpen} onOpenChange={setIsCreateProjectOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Project</DialogTitle>
+            <DialogDescription>
+              Add a new project with full details for students to discover and apply.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {createError && <p className="text-sm text-destructive">{createError}</p>}
+            <div className="space-y-2">
+              <Label htmlFor="project-title">Project Title</Label>
+              <Input
+                id="project-title"
+                value={projectForm.title}
+                onChange={(event) => setProjectForm((current) => ({ ...current, title: event.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="project-description">Description</Label>
+              <Textarea
+                id="project-description"
+                rows={5}
+                value={projectForm.description}
+                onChange={(event) => setProjectForm((current) => ({ ...current, description: event.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="project-start-date">Start Date</Label>
+                <Input
+                  id="project-start-date"
+                  type="date"
+                  value={projectForm.startDate}
+                  onChange={(event) => setProjectForm((current) => ({ ...current, startDate: event.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="project-end-date">End Date</Label>
+                <Input
+                  id="project-end-date"
+                  type="date"
+                  value={projectForm.endDate}
+                  onChange={(event) => setProjectForm((current) => ({ ...current, endDate: event.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="project-status">Status</Label>
+              <select
+                id="project-status"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={projectForm.status}
+                onChange={(event) => setProjectForm((current) => ({ ...current, status: event.target.value as ProjectStatus }))}
+              >
+                <option value="open">Open for Applications</option>
+                <option value="in_progress">In Progress</option>
+                <option value="not_started">Not Started</option>
+              </select>
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setIsCreateProjectOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreateProject} disabled={isCreatingProject}>
+                {isCreatingProject ? "Creating..." : "Create Project"}
+              </Button>
             </div>
           </div>
         </DialogContent>
