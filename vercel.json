@@ -1,0 +1,8 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "ignoreCommand": "git diff --quiet $VERCEL_GIT_PRIOR_COMMIT $VERCEL_GIT_COMMIT -- app components lib public styles package.json package-lock.json next.config.mjs tsconfig.json || exit 0"
+}
